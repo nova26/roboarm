@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+*.pyo
+.claude/
+logs/
+*.egg-info/
+.venv/
+waypoints_old.json
