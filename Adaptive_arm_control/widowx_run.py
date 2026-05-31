@@ -39,7 +39,7 @@ HW_ERROR_NAMES = {1: 'Voltage', 4: 'Overheat', 8: 'Encoder',
 
 # ── Saved positions (DXL ticks from keyboard_control.py) ─────────────────────
 HOME_DXL = {1: 4090, 2: 736,  3: 3353, 4: 948,  5: 1645, 6: 2056, 7: 1448}
-POS1_DXL = {1: 64,  2: 905,  3: 3187, 4: 1577, 5: 1387, 6: 2058, 7: 1984}
+POS1_DXL = {1: 4090, 2: 904,  3: 3185, 4: 1564, 5: 1435, 6: 2056, 7: 1448}
 
 _dxl_ids = [1, 2, 4, 5, 6]
 
