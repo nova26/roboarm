@@ -1,0 +1,8 @@
+torch>=2.1
+numpy>=1.24,<3
+spikingjelly>=0.0.0.0.14
+opencv-python>=4.8
+
+# Optional, only for the hardware-evaluation path:
+#   aedat>=2.0    # for reading DAVIS346 aedat4 recordings
+#   dynamixel-sdk # for sending position commands to WidowX-200 servos
