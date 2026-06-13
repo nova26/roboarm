@@ -215,6 +215,8 @@ def main():
     parser.add_argument('--no-preview', action='store_true')
     parser.add_argument('--baf', type=int, default=BAF_US,
                         help='BAF window in µs (default 10000)')
+    parser.add_argument('--min-events', type=int, default=200,
+                        help='Min events per tick to enable arm motion (default 200)')
     args = parser.parse_args()
 
     # ── calibration ───────────────────────────────────────────────────────────
@@ -313,7 +315,8 @@ def main():
 
             infer_ms = (time.time() - t0) * 1000
 
-            # Control
+            # Control — only move if enough events (target present)
+            target_visible = n_ev >= args.min_events
             err_x = float(pred_pix[0]) - IMAGE_CX
             err_y = float(pred_pix[1]) - IMAGE_CY
 
@@ -322,11 +325,12 @@ def main():
             dq_s = float(np.clip(-args.gain * err_y / dcy_per_shoulder,
                                  -args.max_step, args.max_step))
 
-            if not paused:
+            if not paused and target_visible:
                 q_w, q_s = arm.step(dq_w, dq_s)
             else:
                 q_w = arm.q_ticks[WAIST_ID]
                 q_s = arm.q_ticks[SHOULDER_ID]
+                dq_w = dq_s = 0.0
 
             # Log
             log_w.writerow({
@@ -366,12 +370,13 @@ def main():
                 draw_overlays(aps_bgr, pred_pix, cent, err_x, err_y, s=S)
 
                 state_col = (0,200,0) if not paused else (0,100,255)
+                vis_str = 'TARGET' if target_visible else f'NO TARGET (<{args.min_events}ev)'
                 hud(evt_bgr, [
-                    f'tick {tick}   {"PAUSED" if paused else "ACTIVE"}',
+                    f'tick {tick}   {"PAUSED" if paused else vis_str}',
                     f'pred  ({pred_pix[0]:6.1f}, {pred_pix[1]:6.1f})',
                     f'err   ({err_x:+.1f}, {err_y:+.1f}) px',
                     f'events: {n_ev}   {infer_ms:.0f}ms',
-                ], col=state_col)
+                ], col=state_col if target_visible else (0, 100, 255))
                 hud(aps_bgr, [
                     f'gain={args.gain}  maxstep={args.max_step:.3f}rad',
                     f'dq_w={dq_w:+.4f}  dq_s={dq_s:+.4f}',
