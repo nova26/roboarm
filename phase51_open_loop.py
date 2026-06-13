@@ -55,22 +55,21 @@ CHECKPOINT        = os.path.join(PRED_DIR, 'best.pt')
 LOG_DIR           = os.path.join(HERE, 'phase51_logs')
 
 # Background Activity Filter window (µs) — Inivation's official BAF
-BAF_WINDOW_US     = 2000
+BAF_WINDOW_US     = 10_000   # 10 ms; increase if too much noise
 
 # ── event ring buffer shared between camera and inference threads ─────────────
 
 class EventBuffer:
-    def __init__(self, resolution):
+    def __init__(self, resolution, baf_us=BAF_WINDOW_US):
         self._x    = deque()
         self._y    = deque()
         self._t    = deque()
         self._p    = deque()
         self._lock = threading.Lock()
-        # Inivation's official Background Activity Noise Filter
         import datetime
         self._baf  = dv.noise.BackgroundActivityNoiseFilter(
             resolution,
-            backgroundActivityDuration=datetime.timedelta(microseconds=BAF_WINDOW_US))
+            backgroundActivityDuration=datetime.timedelta(microseconds=baf_us))
 
     def push(self, batch):
         # Run BAF (filters noise events with no recent spatial neighbour)
@@ -174,6 +173,8 @@ def hud_text(img, lines, start_y=14, lh=18, color=(200, 200, 200)):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--no-preview', action='store_true')
+    parser.add_argument('--baf', type=int, default=BAF_WINDOW_US,
+                        help='Background Activity Filter window in µs (default 10000)')
     args = parser.parse_args()
     preview = not args.no_preview
 
@@ -203,7 +204,8 @@ def main():
     cam = dv.io.camera.open(devices[0].serialNumber)
     print(f'Camera: {cam.getCameraName()}  {cam.getEventResolution()}')
 
-    buf = EventBuffer(cam.getEventResolution())
+    buf = EventBuffer(cam.getEventResolution(), baf_us=args.baf)
+    print(f'BAF window: {args.baf} µs')
     last_aps = np.full((DAVIS_H, DAVIS_W), 64, dtype=np.uint8)
 
     def cam_thread_fn():

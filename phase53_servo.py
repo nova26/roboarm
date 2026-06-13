@@ -54,7 +54,7 @@ CROP_W            = 260
 CROP_X0           = (DAVIS_W - CROP_W) // 2
 IMAGE_CX          = CROP_W  / 2.0   # 130
 IMAGE_CY          = DAVIS_H / 2.0   # 130
-BAF_US            = 2000
+BAF_US            = 10_000   # 10 ms; increase if too much noise
 BIN_MS            = 10.0
 DISPLAY_SCALE     = 2
 LOG_DIR           = os.path.join(os.path.dirname(__file__), 'phase53_logs')
@@ -78,13 +78,13 @@ LIMITS = {1: (2363, 5818), 2: (70, 1500)}
 
 # ── event buffer ───────────────────────────────────────────────────────────────
 class EventBuffer:
-    def __init__(self, resolution):
+    def __init__(self, resolution, baf_us=BAF_US):
         self._x = deque(); self._y = deque()
         self._t = deque(); self._p = deque()
         self._lock = threading.Lock()
         self._baf  = dv.noise.BackgroundActivityNoiseFilter(
             resolution,
-            backgroundActivityDuration=datetime.timedelta(microseconds=BAF_US))
+            backgroundActivityDuration=datetime.timedelta(microseconds=baf_us))
 
     def push(self, batch):
         self._baf.accept(batch)
@@ -213,6 +213,8 @@ def main():
     parser.add_argument('--max-step', type=float, default=0.04,
                         help='Max Δq per tick in radians (default 0.04 ≈ 2.3°)')
     parser.add_argument('--no-preview', action='store_true')
+    parser.add_argument('--baf', type=int, default=BAF_US,
+                        help='BAF window in µs (default 10000)')
     args = parser.parse_args()
 
     # ── calibration ───────────────────────────────────────────────────────────
@@ -244,7 +246,8 @@ def main():
     if not devices:
         print('ERROR: No DAVIS camera found.'); return
     cam      = dv.io.camera.open(devices[0].serialNumber)
-    buf      = EventBuffer(cam.getEventResolution())
+    buf      = EventBuffer(cam.getEventResolution(), baf_us=args.baf)
+    print(f'BAF window: {args.baf} µs')
     last_aps = np.full((DAVIS_H, DAVIS_W), 64, dtype=np.uint8)
 
     cam_running = [True]
