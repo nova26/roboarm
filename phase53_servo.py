@@ -301,7 +301,7 @@ def main():
 
     # ── control loop ──────────────────────────────────────────────────────────
     tick    = 0
-    paused  = False
+    paused  = True
     t_mono0 = time.monotonic()
     pred_pix = None
     cent     = None
