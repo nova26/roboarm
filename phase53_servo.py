@@ -78,10 +78,11 @@ LIMITS = {1: (2363, 5818), 2: (70, 1500)}
 
 # ── event buffer ───────────────────────────────────────────────────────────────
 class EventBuffer:
-    def __init__(self, resolution, baf_us=BAF_US):
+    def __init__(self, resolution, baf_us=BAF_US, roi_bottom=DAVIS_H):
         self._x = deque(); self._y = deque()
         self._t = deque(); self._p = deque()
         self._lock = threading.Lock()
+        self._roi_bottom = roi_bottom
         self._baf  = dv.noise.BackgroundActivityNoiseFilter(
             resolution,
             backgroundActivityDuration=datetime.timedelta(microseconds=baf_us))
@@ -94,6 +95,7 @@ class EventBuffer:
         coords = np.array(f.coordinates(), dtype=np.int32)
         pols   = np.array(f.polarities(),  dtype=np.bool_)
         mask   = (coords[:,0] >= CROP_X0) & (coords[:,0] < CROP_X0 + CROP_W)
+        mask  &= (coords[:,1] < self._roi_bottom)
         if not mask.any():
             return
         x = (coords[mask,0] - CROP_X0).astype(np.int16)
@@ -186,9 +188,12 @@ class ArmDriver:
 
 # ── display helpers ────────────────────────────────────────────────────────────
 def make_event_img(binned):
+    """Render accumulated event bin as BGR — bright=ON, dark=OFF, grey=nothing."""
+    on  = np.clip(binned[:,:,0] * 40, 0, 255).astype(np.uint8)
+    off = np.clip(binned[:,:,1] * 40, 0, 255).astype(np.uint8)
     img = np.full((*binned.shape[:2], 3), 30, dtype=np.uint8)
-    img[binned[:,:,0]>0] = (0, 220, 0)
-    img[binned[:,:,1]>0] = (0, 0, 220)
+    img[:,:,1] = on    # green channel = ON events
+    img[:,:,2] = off   # red channel   = OFF events
     return img
 
 def draw_overlays(img, pred, cent, err_x, err_y, s=1):
@@ -224,6 +229,8 @@ def main():
                         help='Min events per tick to enable arm motion (default 50)')
     parser.add_argument('--max-spread', type=float, default=30.0,
                         help='Max event std-dev in px to confirm target (default 30)')
+    parser.add_argument('--roi-bottom', type=int, default=DAVIS_H,
+                        help='Ignore events below this y pixel (default=260, full frame)')
     args = parser.parse_args()
 
     # ── calibration ───────────────────────────────────────────────────────────
@@ -255,8 +262,9 @@ def main():
     if not devices:
         print('ERROR: No DAVIS camera found.'); return
     cam      = dv.io.camera.open(devices[0].serialNumber)
-    buf      = EventBuffer(cam.getEventResolution(), baf_us=args.baf)
-    print(f'BAF window: {args.baf} µs')
+    buf      = EventBuffer(cam.getEventResolution(), baf_us=args.baf,
+                          roi_bottom=args.roi_bottom)
+    print(f'BAF window: {args.baf} µs   ROI y < {args.roi_bottom}')
     last_aps = np.full((DAVIS_H, DAVIS_W), 64, dtype=np.uint8)
 
     cam_running = [True]
