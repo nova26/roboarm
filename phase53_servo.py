@@ -127,6 +127,11 @@ def centroid(x, y):
     if x is None or len(x) == 0: return None
     return float(np.mean(x)), float(np.mean(y))
 
+def event_spread(x, y):
+    """Return (std_x, std_y) of event cloud. Small = concentrated = ball present."""
+    if x is None or len(x) < 10: return None
+    return float(np.std(x)), float(np.std(y))
+
 
 # ── arm driver ─────────────────────────────────────────────────────────────────
 class ArmDriver:
@@ -215,8 +220,10 @@ def main():
     parser.add_argument('--no-preview', action='store_true')
     parser.add_argument('--baf', type=int, default=BAF_US,
                         help='BAF window in µs (default 10000)')
-    parser.add_argument('--min-events', type=int, default=200,
-                        help='Min events per tick to enable arm motion (default 200)')
+    parser.add_argument('--min-events', type=int, default=50,
+                        help='Min events per tick to enable arm motion (default 50)')
+    parser.add_argument('--max-spread', type=float, default=30.0,
+                        help='Max event std-dev in px to confirm target (default 30)')
     args = parser.parse_args()
 
     # ── calibration ───────────────────────────────────────────────────────────
@@ -315,8 +322,14 @@ def main():
 
             infer_ms = (time.time() - t0) * 1000
 
-            # Control — only move if enough events (target present)
-            target_visible = n_ev >= args.min_events
+            # Control — target visible only if events are spatially concentrated
+            spread = event_spread(evs[0], evs[1]) if evs else None
+            target_visible = (
+                n_ev >= args.min_events and
+                spread is not None and
+                spread[0] < args.max_spread and
+                spread[1] < args.max_spread
+            )
             err_x = float(pred_pix[0]) - IMAGE_CX
             err_y = float(pred_pix[1]) - IMAGE_CY
 
@@ -370,7 +383,8 @@ def main():
                 draw_overlays(aps_bgr, pred_pix, cent, err_x, err_y, s=S)
 
                 state_col = (0,200,0) if not paused else (0,100,255)
-                vis_str = 'TARGET' if target_visible else f'NO TARGET (<{args.min_events}ev)'
+                spread_str = f'std=({spread[0]:.0f},{spread[1]:.0f})' if spread else 'std=--'
+                vis_str = f'TARGET {spread_str}' if target_visible else f'NO TARGET {spread_str}'
                 hud(evt_bgr, [
                     f'tick {tick}   {"PAUSED" if paused else vis_str}',
                     f'pred  ({pred_pix[0]:6.1f}, {pred_pix[1]:6.1f})',
