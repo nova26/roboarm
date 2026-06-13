@@ -233,6 +233,8 @@ def main():
                         help='Ignore events below this y pixel (default=260, full frame)')
     parser.add_argument('--no-home', action='store_true',
                         help='Skip goto_home() on startup — arm stays wherever it is')
+    parser.add_argument('--use-centroid', action='store_true',
+                        help='Use event centroid directly instead of model prediction')
     args = parser.parse_args()
 
     # ── calibration ───────────────────────────────────────────────────────────
@@ -341,8 +343,14 @@ def main():
                 spread[0] < args.max_spread and
                 spread[1] < args.max_spread
             )
-            err_x = float(pred_pix[0]) - IMAGE_CX
-            err_y = float(pred_pix[1]) - IMAGE_CY
+
+            # Error source: centroid (direct) or model prediction
+            if args.use_centroid and cent is not None:
+                ctrl_x, ctrl_y = cent[0], cent[1]
+            else:
+                ctrl_x, ctrl_y = float(pred_pix[0]), float(pred_pix[1])
+            err_x = ctrl_x - IMAGE_CX
+            err_y = ctrl_y - IMAGE_CY
 
             dq_w = float(np.clip(-args.gain * err_x / dcx_per_waist,
                                  -args.max_step, args.max_step))
