@@ -235,6 +235,8 @@ def main():
                         help='Skip goto_home() on startup — arm stays wherever it is')
     parser.add_argument('--use-centroid', action='store_true',
                         help='Use event centroid directly instead of model prediction')
+    parser.add_argument('--no-shoulder', action='store_true',
+                        help='Disable shoulder (y-axis) control — waist only')
     args = parser.parse_args()
 
     # ── calibration ───────────────────────────────────────────────────────────
@@ -376,8 +378,9 @@ def main():
 
             dq_w = float(np.clip(-args.gain * err_x / dcx_per_waist,
                                  -args.max_step, args.max_step))
-            dq_s = float(np.clip(-args.gain * err_y / dcy_per_shoulder,
-                                 -args.max_step, args.max_step))
+            dq_s = 0.0 if args.no_shoulder else float(
+                np.clip(-args.gain * err_y / dcy_per_shoulder,
+                        -args.max_step, args.max_step))
 
             if not paused and target_visible:
                 q_w, q_s = arm.step(dq_w, dq_s)
