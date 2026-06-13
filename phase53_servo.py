@@ -231,6 +231,8 @@ def main():
                         help='Max event std-dev in px to confirm target (default 30)')
     parser.add_argument('--roi-bottom', type=int, default=DAVIS_H,
                         help='Ignore events below this y pixel (default=260, full frame)')
+    parser.add_argument('--no-home', action='store_true',
+                        help='Skip goto_home() on startup — arm stays wherever it is')
     args = parser.parse_args()
 
     # ── calibration ───────────────────────────────────────────────────────────
@@ -280,7 +282,8 @@ def main():
 
     # ── arm ───────────────────────────────────────────────────────────────────
     arm = ArmDriver(args.device)
-    arm.goto_home()
+    if not args.no_home:
+        arm.goto_home()
 
     # ── logging ───────────────────────────────────────────────────────────────
     os.makedirs(LOG_DIR, exist_ok=True)
