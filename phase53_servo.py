@@ -304,11 +304,36 @@ def main():
         cv2.namedWindow('Phase 5.3 — Visual Servo', cv2.WINDOW_NORMAL)
         cv2.resizeWindow('Phase 5.3 — Visual Servo', CROP_W*S*2+6, DAVIS_H*S+60)
 
+    # ── async inference thread ────────────────────────────────────────────────
+    # Runs model continuously; main loop reads latest result without blocking.
+    _infer_lock  = threading.Lock()
+    _latest_pred = [np.array([IMAGE_CX, IMAGE_CY], dtype=np.float32)]
+    _latest_bin  = [np.zeros((DAVIS_H, CROP_W, 2), dtype=np.float32)]
+    _infer_ms    = [0.0]
+    _infer_running = [True]
+
+    def infer_loop():
+        while _infer_running[0]:
+            with _infer_lock:
+                b = _latest_bin[0].copy()
+            bin_t = torch.from_numpy(b).unsqueeze(0).unsqueeze(0).to(device)
+            t_inf = time.time()
+            with torch.no_grad():
+                pn = model(bin_t)
+                if pn.dim() == 4: pn = pn[:, :, 0, :]
+                p = model.norm_to_pix(pn).squeeze().cpu().numpy()
+            with _infer_lock:
+                _latest_pred[0] = p
+                _infer_ms[0]    = (time.time() - t_inf) * 1000
+
+    infer_thread = threading.Thread(target=infer_loop, daemon=True)
+    infer_thread.start()
+
     # ── control loop ──────────────────────────────────────────────────────────
     tick    = 0
     paused  = True
     t_mono0 = time.monotonic()
-    pred_pix = None
+    pred_pix = np.array([IMAGE_CX, IMAGE_CY], dtype=np.float32)
     cent     = None
 
     print('\nRunning — SPACE to pause, Q to quit.\n')
@@ -321,19 +346,16 @@ def main():
 
             t0 = time.time()
 
-            # Inference
+            # Drain events and push latest bin to inference thread
             evs    = buf.drain()
             n_ev   = len(evs[0]) if evs else 0
             binned = bin_events(*evs) if evs else np.zeros((DAVIS_H,CROP_W,2),dtype=np.float32)
             cent   = centroid(evs[0], evs[1]) if evs else None
+            with _infer_lock:
+                _latest_bin[0] = binned
+                pred_pix       = _latest_pred[0].copy()
 
-            bin_t = torch.from_numpy(binned).unsqueeze(0).unsqueeze(0).to(device)
-            with torch.no_grad():
-                pn = model(bin_t)
-                if pn.dim()==4: pn = pn[:,:,0,:]
-                pred_pix = model.norm_to_pix(pn).squeeze().cpu().numpy()
-
-            infer_ms = (time.time() - t0) * 1000
+            infer_ms = _infer_ms[0]
 
             # Control — target visible only if events are spatially concentrated
             spread = event_spread(evs[0], evs[1]) if evs else None
@@ -440,7 +462,8 @@ def main():
     except KeyboardInterrupt:
         print('\nInterrupted.')
     finally:
-        cam_running[0] = False
+        _infer_running[0] = False
+        cam_running[0]    = False
         log_f.close()
         if preview:
             cv2.destroyAllWindows()
